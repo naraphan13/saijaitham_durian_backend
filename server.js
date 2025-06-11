@@ -20,7 +20,7 @@ const calculateRoute = require('./routes/calculate-router');
 const app = express();
 
 app.use(cors({
-    origin: "https://suriya-388.netlify.app",
+    origin: "https://saijaitham.netlify.app",
     credentials: true // ถ้าคุณส่ง cookie หรือ token ก็เปิดด้วย
   }))
 app.use(morgan("dev"));
