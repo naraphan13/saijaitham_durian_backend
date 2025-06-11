@@ -1,0 +1,203 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      String   @default("user")
+  name      String? // ชื่อจริง (ไม่บังคับ)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Bill {
+  id     Int      @id @default(autoincrement())
+  date   DateTime @default(now())
+  seller String
+  items  Item[]
+}
+
+model Item {
+  id         Int    @id @default(autoincrement())
+  billId     Int
+  variety    String
+  grade      String
+  weight     Float
+  weights    Json? // ✅ ใส่ field ใหม่เพื่อเก็บน้ำหนักรายเข่ง
+  pricePerKg Float
+  bill       Bill   @relation(fields: [billId], references: [id])
+}
+
+model ExportContainer {
+  id            Int      @id @default(autoincrement())
+  date          String
+  city          String
+  containerInfo String
+  containerCode String
+  refCode       String
+  durianItems   Json // เก็บเป็น array ของรายการทุเรียน
+  freightItems  Json? // ✅ เพิ่มตรงนี้
+  handlingCosts Json // ข้อมูลค่าจัดการกล่อง
+  boxCosts      Json // ข้อมูลค่ากล่อง
+  inspectionFee Float
+  brandSummary  String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Packing {
+  id               Int      @id @default(autoincrement())
+  date             String
+  recipient        String? // ✅ เพิ่มตรงนี้
+  bigBoxQuantity   Int
+  bigBoxPrice      Float
+  smallBoxQuantity Int
+  smallBoxPrice    Float
+  deductions       Json // Array ของรายการหักเบิก
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ChemicalDip {
+  id         Int      @id @default(autoincrement())
+  date       String
+  recipient  String? // ✅ เพิ่มตรงนี้
+  weight     Float
+  pricePerKg Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ContainerLoading {
+  id         Int      @id @default(autoincrement())
+  date       String
+  recipient  String? // ✅ เพิ่มตรงนี้
+  containers Json // array ของ { label, containerCode, price }
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model CuttingBill {
+  id              Int              @id @default(autoincrement())
+  cutterName      String
+  date            DateTime // ✅ แทน start-end
+  mainWeight      Float?
+  mainPrice       Float?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  mainItems       MainItem[] // ✅ เพิ่มใหม่
+  deductItems     DeductItem[]
+  extraDeductions ExtraDeduction[]
+}
+
+model DeductItem {
+  id            Int         @id @default(autoincrement())
+  label         String
+  qty           Float
+  unitPrice     Float
+  actualAmount  Float? // ✅ ใหม่: ถ้ามีจะใช้แทน qty * unitPrice
+  cuttingBillId Int
+  cuttingBill   CuttingBill @relation(fields: [cuttingBillId], references: [id], onDelete: Cascade)
+}
+
+model ExtraDeduction {
+  id            Int         @id @default(autoincrement())
+  label         String
+  amount        Float
+  cuttingBillId Int
+  cuttingBill   CuttingBill @relation(fields: [cuttingBillId], references: [id], onDelete: Cascade)
+}
+
+model SellBill {
+  id        Int        @id @default(autoincrement())
+  customer  String
+  date      DateTime   @default(now())
+  items     SellItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model SellItem {
+  id         Int      @id @default(autoincrement())
+  variety    String
+  grade      String
+  weight     Float
+  weights    Json?
+  pricePerKg Float
+  sellBillId Int
+  sellBill   SellBill @relation(fields: [sellBillId], references: [id], onDelete: Cascade)
+}
+
+model Payroll {
+  id            Int      @id @default(autoincrement())
+  employeeName  String
+  date          DateTime
+  payType       String // "รายวัน" หรือ "รายเดือน"
+  workDays      Float? // สำหรับรายวัน
+  pricePerDay   Float? // สำหรับรายวัน
+  monthlySalary Float? // สำหรับรายเดือน
+  months        Float? // จำนวนเดือนที่จ่าย (รายเดือน)
+  bonus          Float?       // ✅ เพิ่มตรงนี้
+  totalPay      Float
+  totalDeduct   Float
+  netPay        Float
+
+  deductions Deduction[] @relation("PayrollDeductions")
+
+  createdAt DateTime @default(now())
+}
+
+model Deduction {
+  id     Int    @id @default(autoincrement())
+  name   String
+  amount Float
+
+  payrollId Int
+  payroll   Payroll @relation("PayrollDeductions", fields: [payrollId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model GradeHistory {
+  id              Int      @id @default(autoincrement())
+  farmName        String
+  date            DateTime
+  totalWeight     Float
+  basePrice       Float
+  netAmount       Float
+  finalPrice      Float
+  remainingWeight Float
+  grades          Grade[]
+  createdAt       DateTime @default(now())
+}
+
+model Grade {
+  id             Int          @id @default(autoincrement())
+  name           String
+  weight         Float
+  price          Float
+  gradeHistory   GradeHistory @relation(fields: [gradeHistoryId], references: [id])
+  gradeHistoryId Int
+}
+
+model MainItem {
+  id            Int         @id @default(autoincrement())
+  label         String? // ✅ ชื่อรายการ (เช่น “รอบเช้า”, “ตัดแปลง B”)
+  weight        Float? // ✅ น้ำหนัก (optional, ไม่ใส่ได้)
+  price         Float // ✅ ราคาทั้งก้อน หรือราคาต่อกิโล (ขึ้นอยู่กับกรณี)
+  cuttingBillId Int
+  cuttingBill   CuttingBill @relation(fields: [cuttingBillId], references: [id], onDelete: Cascade)
+}
