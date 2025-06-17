@@ -199,14 +199,14 @@ router.get("/:id/pdf", async (req, res) => {
       doc.image(logoPath, logoY, logoY, { fit: [logoSize, logoSize] });
     }
 
-    doc.font("thai").fontSize(13).text("บริษัท สุริยา388 จำกัด", companyX, topY);
+    doc.font("thai").fontSize(13).text("บริษัท ใส่ใจทำ เฟรชฟรุ๊ตส์ จำกัด", companyX, topY);
     doc.font("thai").fontSize(13).text(
-      "เลขที่ 203/2 ม.12 ต.บ้านนา อ.เมืองชุมพร จ.ชุมพร 86190",
+      "เลขที่ 436 หมู่ 5 ตำบลวังตะกอ อำเภอหลังสวน จังหวัดชุมพร 86110",
       companyX,
       topY + 18
     );
     doc.font("thai").fontSize(13).text(
-      "โทร: 081-078-2324 , 082-801-1225 , 095-905-5588",
+      "โทร 081-105-5681, 098-159-3888",
       companyX,
       topY + 36
     );
