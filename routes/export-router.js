@@ -33,7 +33,7 @@ router.post('/exportpdf', async (req, res) => {
   }
 
   doc.font('thai-bold').fontSize(26).text(
-    'ใบส่งออกทุเรียน SURIYA 388 / Durian Export Invoice - SURIYA 388',
+    'ใบส่งออกทุเรียน SAIJAITHAM / Durian Export Invoice - SAIJAITHAM',
     0, 50, { align: 'center' }
   );
 
