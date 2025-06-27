@@ -114,31 +114,51 @@ router.post('/exportpdf', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const newExport = await prisma.exportContainer.create({
-      data: req.body,
+    function toDateOnly(d) {
+      const dt = new Date(d);
+      return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    }
+
+    const billDate = toDateOnly(new Date(req.body.date));
+    const season = await prisma.season.findFirst({
+      where: {
+        startDate: { lte: billDate },
+        OR: [
+          { endDate: null },
+          { endDate: { gte: billDate } },
+        ],
+      },
     });
+
+    const newExport = await prisma.exportContainer.create({
+      data: {
+        ...req.body,
+        seasonId: season?.id || null,
+      },
+    });
+
     res.json(newExport);
   } catch (err) {
     console.error("❌ POST /v1/export error::", err);
-    console.log('err', err)
     res.status(500).json({ error: 'เกิดข้อผิดพลาดในการบันทึก', details: err });
   }
 });
 
-// READ ALL: ดึงรายการเอกสารทั้งหมด
+// ✅ READ ALL: รองรับ ?seasonId=...
 router.get('/', async (req, res) => {
   try {
+    const seasonId = parseInt(req.query.seasonId);
     const exports = await prisma.exportContainer.findMany({
+      where: seasonId ? { seasonId } : {},
       orderBy: { date: 'desc' },
     });
-    console.log(exports);
     res.json(exports);
   } catch (err) {
     res.status(500).json({ error: 'ไม่สามารถดึงรายการได้', details: err });
   }
 });
 
-// READ ONE: ดึงเอกสารตาม ID
+// ✅ READ ONE
 router.get('/:id', async (req, res) => {
   try {
     const exportDoc = await prisma.exportContainer.findUnique({
@@ -150,13 +170,34 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// UPDATE: แก้ไขเอกสารตาม ID
+
+// ✅ UPDATE พร้อมคำนวณ seasonId ใหม่
 router.put('/:id', async (req, res) => {
   try {
+    function toDateOnly(d) {
+      const dt = new Date(d);
+      return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    }
+
+    const billDate = toDateOnly(new Date(req.body.date));
+    const season = await prisma.season.findFirst({
+      where: {
+        startDate: { lte: billDate },
+        OR: [
+          { endDate: null },
+          { endDate: { gte: billDate } },
+        ],
+      },
+    });
+
     const updated = await prisma.exportContainer.update({
       where: { id: parseInt(req.params.id) },
-      data: req.body,
+      data: {
+        ...req.body,
+        seasonId: season?.id || null,
+      },
     });
+
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'อัปเดตไม่สำเร็จ', details: err });
@@ -174,5 +215,130 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ error: 'ลบไม่สำเร็จ', details: err });
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+router.get("/summarypdf", async (req, res) => {
+  const seasonId = parseInt(req.query.seasonId);
+  if (!seasonId) return res.status(400).send("seasonId required");
+
+  try {
+    console.log("📌 เริ่มสร้าง PDF สำหรับ seasonId:", seasonId);
+
+    const season = await prisma.season.findUnique({ where: { id: seasonId } });
+    console.log("✅ Season:", season);
+
+    const exports = await prisma.exportContainer.findMany({ where: { seasonId } });
+    console.log("✅ พบ export:", exports.length);
+
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
+    let buffers = [];
+    doc.on("data", buffers.push.bind(buffers));
+    doc.on("end", () => {
+      const pdfData = Buffer.concat(buffers);
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename=summary-season-${seasonId}.pdf`,
+        "Content-Length": pdfData.length,
+      });
+      res.end(pdfData);
+    });
+
+    doc.on("error", (err) => {
+      console.error("❌ PDFKit generation error:", err);
+    });
+
+    // บันทึกไฟล์ชั่วคราวสำหรับตรวจสอบ (option)
+    const out = fs.createWriteStream(`debug-summary-${seasonId}.pdf`);
+    doc.pipe(out);
+
+    doc.fontSize(20).text(`📦 รายงานสรุปการส่งออกทุเรียน - ฤดูกาล ${season.name}`, { align: "center" });
+    doc.moveDown();
+    doc.fontSize(14).text(
+      `ช่วงเวลา: ${new Date(season.startDate).toLocaleDateString("th-TH")} - ${season.endDate ? new Date(season.endDate).toLocaleDateString("th-TH") : "ปัจจุบัน"}`
+    );
+    doc.moveDown();
+
+    let totalSum = 0;
+    exports.forEach((exp, i) => {
+      console.log(`🔍 export ID ${exp.id}`);
+
+      let durianTotal = 0;
+      try {
+        const durians = Array.isArray(exp.durianItems) ? exp.durianItems : JSON.parse(exp.durianItems || "[]");
+        durianTotal = durians.reduce((sum, d) => sum + (d.boxes * d.weightPerBox * d.pricePerKg), 0);
+      } catch (e) {
+        console.warn(`⚠️ durianItems format invalid for export ID ${exp.id}`);
+      }
+
+      let boxTotal = 0;
+      try {
+        const boxes = typeof exp.boxCosts === 'object' ? exp.boxCosts : JSON.parse(exp.boxCosts || '{}');
+        boxTotal = Object.values(boxes).reduce((sum, b) => sum + (b.quantity * b.unitCost), 0);
+      } catch (e) {
+        console.warn(`⚠️ boxCosts format invalid for export ID ${exp.id}`);
+      }
+
+      let handleTotal = 0;
+      try {
+        const handlers = typeof exp.handlingCosts === 'object' ? exp.handlingCosts : JSON.parse(exp.handlingCosts || '{}');
+        handleTotal = Object.values(handlers).reduce((sum, h) => sum + (h.weight * h.costPerKg), 0);
+      } catch (e) {
+        console.warn(`⚠️ handlingCosts format invalid for export ID ${exp.id}`);
+      }
+
+      let freightTotal = 0;
+      try {
+        const freights = Array.isArray(exp.freightItems) ? exp.freightItems : JSON.parse(exp.freightItems || "[]");
+        freightTotal = freights.reduce((sum, f) => sum + (f.weight * f.pricePerKg), 0);
+      } catch (e) {
+        console.warn(`⚠️ freightItems format invalid for export ID ${exp.id}`);
+      }
+
+      const inspectionFee = Number(exp.inspectionFee) || 0;
+      const total = durianTotal + boxTotal + handleTotal + freightTotal + inspectionFee;
+      totalSum += total;
+
+      try {
+        doc.fontSize(12).text(
+          `${i + 1}. วันที่: ${exp.date} | เมือง: ${exp.city} | รหัสตู้: ${exp.containerCode} | รวม: ${Number(total).toLocaleString()} บาท`
+        );
+      } catch (err) {
+        console.warn(`⚠️ export ID ${exp.id} render failed`, err);
+      }
+    });
+
+    doc.moveDown();
+    doc.fontSize(16).text(`รวมยอดทั้งฤดูกาล: ${Number(totalSum).toLocaleString()} บาท`, { align: "right" });
+    doc.end();
+  } catch (err) {
+    console.error("/summarypdf error::", util.inspect(err, { depth: null }));
+    res.status(500).send("เกิดข้อผิดพลาดขณะสร้าง PDF");
+  }
+});
+
 
 module.exports = router;
